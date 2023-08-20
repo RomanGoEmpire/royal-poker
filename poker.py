@@ -1,18 +1,20 @@
 import random
 
 from card import Card
+import numpy as np
 
-HAND_RATING = ['Royal Flush', 'Four of a Kind', 'Full House', 'Straight', 'Two Pair']
-CARD_RANKS = ['A', 'K', 'Q', 'J', 'T']
+HAND_RATING = np.array(['Royal Flush', 'Four of a Kind', 'Full House', 'Straight', 'Two Pair'])
+CARD_RANKS = np.array(['A', 'K', 'Q', 'J', 'T'])
 
 
 def create_deck():
-    deck = []
-    for suit in ['C', 'D', 'H', 'S']:
-        for rank in ['T', 'J', 'Q', 'K', 'A']:
-            deck.append(Card(rank, suit))
-    random.shuffle(deck)
-    return deck
+    suits = np.array(['C', 'D', 'H', 'S'])
+    ranks = np.array(['T', 'J', 'Q', 'K', 'A'])
+    deck = np.array([(Card(rank, suit)) for suit in suits for rank in ranks])
+    shuffled_deck = list(deck)
+    random.shuffle(shuffled_deck)
+    return shuffled_deck
+
 
 
 def get_distribution(cards):
@@ -94,7 +96,7 @@ def is_two_pair(ranks):
 
 def sort_cards(hands):
     # sort the cards by rank
-    return sorted(hands, key=lambda card: CARD_RANKS.index(card.rank))
+    return sorted(hands, key=lambda card: np.where(CARD_RANKS == card.rank)[0][0])
 
 
 def get_four_of_a_kind_card_order(cards, ranks):
@@ -170,17 +172,17 @@ def get_best(cards):
     elif is_two_pair(ranks):
         return 'Two Pair', get_two_pair_card_order(cards, ranks)
     else:
-        print(ranks)
+        # print(ranks)
         return Exception('No best hand')
 
 
 def select_winner(player_hands, community_cards):
     all_hands = []
     for player_card in player_hands:
-        print(f'Player {player_hands.index(player_card) + 1} cards: {player_card}')
+        # print(f'Player {player_hands.index(player_card) + 1} cards: {player_card}')
         cards = player_card + community_cards
         best, card_value = get_best(cards)
-        print(best, card_value)
+        # print(best, card_value)
         all_hands.append((best, card_value))
     # get indexes of best hands with help of HAND_RANKS
     all_indexes = [HAND_RATING.index(hand[0]) for hand in all_hands]
@@ -230,24 +232,28 @@ def get_index_rank(rank):
     return CARD_RANKS.index(rank)
 
 
-if __name__ == '__main__':
-    # doctest.testmod()
+def initialize_table():
+    return {'AA': 0, 'AK': 0, 'AQ': 0, 'AJ': 0, 'AT': 0,
+            'KK': 0, 'KQ': 0, 'KJ': 0, 'KT': 0,
+            'QQ': 0, 'QJ': 0, 'QT': 0,
+            'JJ': 0, 'JT': 0,
+            'TT': 0}
 
-    rounds = 100_000
-    players = 2
-    hands = {'Royal Flush': 0, 'Four of a Kind': 0, 'Full House': 0, 'Straight': 0, 'Two Pair': 0}
-    all_possible_hands = {'AA': 0, 'AK': 0, 'AQ': 0, 'AJ': 0, 'AT': 0,
-                          'KK': 0, 'KQ': 0, 'KJ': 0, 'KT': 0,
-                          'QQ': 0, 'QJ': 0, 'QT': 0,
-                          'JJ': 0, 'JT': 0,
-                          'TT': 0}
-    open_cards = []
+
+def preflop(rounds, players, file):
+    played_amount = initialize_table()
+    won_amount = initialize_table()
+    even_amount = initialize_table()
+    lost_amount = initialize_table()
+    print_rounds = rounds / 100
     hand_rank = None
     for round in range(rounds):
+        if round % print_rounds == 0:
+            print(f'{round / rounds * 100:.0f}%')
         deck = create_deck()
         hands = []
         open_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
-        print(f'Open cards: {open_cards}')
+        # print(f'Open cards: {open_cards}')
         for player in range(players):
             hand = [deck.pop(), deck.pop()]
             hand = sort_cards(hand)
@@ -255,9 +261,30 @@ if __name__ == '__main__':
             if player == 0:
                 hand_rank = hand[0].rank, hand[1].rank
         best_hands, player_indexes = select_winner(hands, open_cards)
-        for player in player_indexes:
-            print(f'Player {player + 1} won!')
-        print(f'Won with {best_hands[0]}: {best_hands[1]}')
-        print(f'Hand rank: {hand_rank}')
-        all_possible_hands[f'{hand_rank[0]}{hand_rank[1]}'] += 1
-    print(all_possible_hands)
+        # for player in player_indexes:
+        # print(f'Player {player + 1} won!')
+        # print(f'Won with {best_hands[0]}: {best_hands[1]}')
+        # print(f'Hand rank: {hand_rank}')
+        played_amount[f'{hand_rank[0]}{hand_rank[1]}'] += 1
+        if player_indexes.count(0) == 1 and len(player_indexes) == 1:
+            won_amount[f'{hand_rank[0]}{hand_rank[1]}'] += 1
+        if player_indexes.count(0) == 1 and len(player_indexes) > 1:
+            even_amount[f'{hand_rank[0]}{hand_rank[1]}'] += 1
+        if player_indexes.count(0) == 0:
+            lost_amount[f'{hand_rank[0]}{hand_rank[1]}'] += 1
+
+    for key, value in played_amount.items():
+        print(key,
+              f"W: {won_amount[key] / value * 100:.0f}% S: {even_amount[key] / value * 100:.0f}% L: {lost_amount[key] / value * 100:.0f}%")
+
+    with open(file, 'w') as file:
+        file.write('Hand,Played,Won,Even,Lost\n')
+        for key, value in played_amount.items():
+            file.write(
+                f"{key},{value},{won_amount[key] / value * 100:.1f}%,{even_amount[key] / value * 100:.1f}%,{lost_amount[key] / value * 100:.1f}%\n")
+
+
+if __name__ == '__main__':
+    # doctest.testmod()
+    # calulate_odds()
+    preflop(100_000, 2, '2_preflop.csv')
