@@ -1,20 +1,32 @@
+import itertools
 import random
 
 from card import Card
-import numpy as np
 
-HAND_RATING = np.array(['Royal Flush', 'Four of a Kind', 'Full House', 'Straight', 'Two Pair'])
-CARD_RANKS = np.array(['A', 'K', 'Q', 'J', 'T'])
+HAND_RATING = ['Royal Flush', 'Four of a Kind', 'Full House', 'Straight', 'Two Pair']
+CARD_RANKS = ['A', 'K', 'Q', 'J', 'T']
 
 
 def create_deck():
-    suits = np.array(['C', 'D', 'H', 'S'])
-    ranks = np.array(['T', 'J', 'Q', 'K', 'A'])
-    deck = np.array([(Card(rank, suit)) for suit in suits for rank in ranks])
+    suits = ['C', 'D', 'H', 'S']
+    ranks = ['T', 'J', 'Q', 'K', 'A']
+    deck = [(Card(rank, suit)) for suit in suits for rank in ranks]
     shuffled_deck = list(deck)
     random.shuffle(shuffled_deck)
     return shuffled_deck
 
+
+def get_combinations_for_postflop():
+    combinations = list(itertools.combinations_with_replacement(CARD_RANKS, 5))
+    combinations = [combination for combination in combinations if combination.count('A') <= 4]
+    combinations = [combination for combination in combinations if combination.count('K') <= 4]
+    combinations = [combination for combination in combinations if combination.count('Q') <= 4]
+    combinations = [combination for combination in combinations if combination.count('J') <= 4]
+    combinations = [combination for combination in combinations if combination.count('T') <= 4]
+    final_combinations = []
+    for combination in combinations:
+        final_combinations.append(''.join(combination))
+    return final_combinations
 
 
 def get_distribution(cards):
@@ -96,7 +108,7 @@ def is_two_pair(ranks):
 
 def sort_cards(hands):
     # sort the cards by rank
-    return sorted(hands, key=lambda card: np.where(CARD_RANKS == card.rank)[0][0])
+    return sorted(hands, key=lambda card: CARD_RANKS.index(card.rank))
 
 
 def get_four_of_a_kind_card_order(cards, ranks):
@@ -240,17 +252,27 @@ def initialize_table():
             'TT': 0}
 
 
+def initialize_postflop_table():
+    combinations = get_combinations_for_postflop()
+    table = {}
+    for combination in combinations:
+        table[combination] = 0
+    return table
+
+
 def preflop(rounds, players, file):
     played_amount = initialize_table()
     won_amount = initialize_table()
     even_amount = initialize_table()
     lost_amount = initialize_table()
+    pure_deck = create_deck()
     print_rounds = rounds / 100
     hand_rank = None
     for round in range(rounds):
         if round % print_rounds == 0:
             print(f'{round / rounds * 100:.0f}%')
-        deck = create_deck()
+        deck = pure_deck.copy()
+        random.shuffle(deck)
         hands = []
         open_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
         # print(f'Open cards: {open_cards}')
@@ -284,7 +306,57 @@ def preflop(rounds, players, file):
                 f"{key},{value},{won_amount[key] / value * 100:.1f}%,{even_amount[key] / value * 100:.1f}%,{lost_amount[key] / value * 100:.1f}%\n")
 
 
+def postflop(rounds, players, file):
+    played_amount = initialize_postflop_table()
+    won_amount = initialize_postflop_table()
+    even_amount = initialize_postflop_table()
+    lost_amount = initialize_postflop_table()
+    pure_deck = create_deck()
+    print_rounds = rounds / 100
+    hand_rank = None
+    for round in range(rounds):
+        if round % print_rounds == 0:
+            print(f'{round / rounds * 100:.0f}%')
+        deck = pure_deck.copy()
+        random.shuffle(deck)
+        hands = []
+        open_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
+        # print(f'Open cards: {open_cards}')
+        for player in range(players):
+            hand = [deck.pop(), deck.pop()]
+            hand = sort_cards(hand)
+            hands.append(hand)
+            if player == 0:
+                hand_rank = [hand[0].rank, hand[1].rank, open_cards[0].rank, open_cards[1].rank, open_cards[2].rank]
+                hand_rank = sorted(hand_rank, key=get_index_rank)
+        best_hands, player_indexes = select_winner(hands, open_cards)
+        # for player in player_indexes:
+        # print(f'Player {player + 1} won!')
+        # print(f'Won with {best_hands[0]}: {best_hands[1]}')
+        # print(f'Hand rank: {hand_rank}')
+        played_amount["".join(hand_rank)] += 1
+        if player_indexes.count(0) == 1 and len(player_indexes) == 1:
+            won_amount["".join(hand_rank)] += 1
+        if player_indexes.count(0) == 1 and len(player_indexes) > 1:
+            even_amount["".join(hand_rank)] += 1
+        if player_indexes.count(0) == 0:
+            lost_amount["".join(hand_rank)] += 1
+
+    for key, value in played_amount.items():
+        if value > 0:
+            print(key,
+                  f"W: {won_amount[key] / value * 100:.0f}% S: {even_amount[key] / value * 100:.0f}% L: {lost_amount[key] / value * 100:.0f}%")
+        else:
+            print(key, f"W: 0% S: 0% L: 0%")
+
+    with open(file, 'w') as file:
+        file.write('Hand,Played,Won,Even,Lost\n')
+        for key, value in played_amount.items():
+            file.write(
+                f"{key},{value},{won_amount[key] / value * 100:.1f}%,{even_amount[key] / value * 100:.1f}%,{lost_amount[key] / value * 100:.1f}%\n")
+
+
 if __name__ == '__main__':
     # doctest.testmod()
     # calulate_odds()
-    preflop(100_000, 2, '2_preflop.csv')
+    postflop(10_000_000, 3, '3_postflop.csv')
